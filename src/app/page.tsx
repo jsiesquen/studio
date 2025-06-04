@@ -1,3 +1,4 @@
+
 'use client';
 
 import React, { useState, useEffect, useTransition } from 'react';
@@ -59,6 +60,7 @@ export default function HomePage() {
   useEffect(() => {
     fetchResources(filters);
     fetchFilterOptions();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [filters]);
 
 
@@ -85,9 +87,15 @@ export default function HomePage() {
         fetchResources(filters); // Re-fetch resources
         fetchFilterOptions(); // Re-fetch filter options in case new category/topic added
       } else {
+        let errorDetails = '';
+        if (result.errors) {
+          errorDetails = Object.entries(result.errors)
+            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+            .join('; ');
+        }
         toast({
           title: `Error ${editingResource ? 'updating' : 'creating'} resource`,
-          description: result.message + (result.errors ? ` Details: ${JSON.stringify(result.errors)}` : ''),
+          description: result.message + (errorDetails ? ` Details: ${errorDetails}` : ''),
           variant: 'destructive',
         });
       }
