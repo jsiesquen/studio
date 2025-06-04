@@ -1,3 +1,4 @@
+
 import { z } from 'zod';
 
 export const ResourceTypeEnum = z.enum(["Article", "Video", "Course", "Tool", "Documentation"]);
@@ -20,9 +21,9 @@ export const ResourceSchema = z.object({
   topic: z.string().min(2, { message: "Topic must be at least 2 characters long." }),
   manualLastUpdate: z.string().regex(manualLastUpdateRegex, { message: "Format must be MM/YYYY" }).optional().or(z.literal('')),
   // Fields for Firestore storage, not directly in Resource type for UI, but used in actions/data-store
-  manualLastUpdateString: z.string().optional(),
-  manualLastUpdateMonth: z.number().int().min(1).max(12).optional(),
-  manualLastUpdateYear: z.number().int().min(1900).max(2100).optional(),
+  manualLastUpdateString: z.string().optional().nullable(),
+  manualLastUpdateMonth: z.number().int().min(1).max(12).optional().nullable(),
+  manualLastUpdateYear: z.number().int().min(1900).max(2100).optional().nullable(),
 });
 
 // Base type for UI and general use, excludes specific storage fields
@@ -57,4 +58,6 @@ export interface SearchFilters {
   category?: string;
   topic?: string;
   sortBy?: 'name_asc' | 'name_desc' | 'date_asc' | 'date_desc';
+  filterYear?: number | 'All';
+  filterMonth?: number | 'All';
 }

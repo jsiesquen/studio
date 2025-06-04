@@ -13,7 +13,7 @@ import {
   orderBy as firestoreOrderBy, 
   Timestamp,
   QueryConstraint,
-  serverTimestamp // Import for server-side timestamp updates
+  serverTimestamp
 } from 'firebase/firestore';
 import type { Resource, SearchFilters, ResourceType } from './definitions';
 import { RESOURCE_TYPES, ResourceTypeEnum } from './definitions';
@@ -31,7 +31,7 @@ const fromFirestore = (docSnapshot: any): Resource => {
   const parsedType = ResourceTypeEnum.safeParse(data.type);
   if (parsedType.success) {
     type = parsedType.data;
-  } else if (data.type !== undefined) { 
+  } else if (data.type !== undefined && data.type !== null) { 
     console.warn(`Document ${docSnapshot.id} has invalid type '${data.type}'. Defaulting to '${type}'.`);
   }
 
@@ -39,7 +39,7 @@ const fromFirestore = (docSnapshot: any): Resource => {
   if (data.updatedDate instanceof Timestamp) {
     updatedDate = data.updatedDate.toDate();
   } else {
-    if (data.updatedDate !== undefined) { 
+    if (data.updatedDate !== undefined && data.updatedDate !== null) { 
       console.warn(`Document ${docSnapshot.id} has invalid or missing updatedDate (system timestamp). Defaulting to epoch.`);
     }
     updatedDate = new Date(0); 
@@ -50,20 +50,14 @@ const fromFirestore = (docSnapshot: any): Resource => {
   
   if (!data.name) console.warn(`Document ${docSnapshot.id} missing name. Defaulting to '${name}'.`);
   if (!data.fullUrl) console.warn(`Document ${docSnapshot.id} missing fullUrl. Defaulting to '${fullUrl}'.`);
-  // No warning for missing category/topic if undefined, as they might be intentionally omitted.
-  // if (!data.category && data.category !== undefined) console.warn(`Document ${docSnapshot.id} missing category. Defaulting to '${category}'.`);
-  // if (!data.topic && data.topic !== undefined) console.warn(`Document ${docSnapshot.id} missing topic. Defaulting to '${topic}'.`);
 
-  // Reconstruct manualLastUpdate from stored parts if they exist
   let manualLastUpdateValue: string | undefined = undefined;
   if (data.manualLastUpdateString) {
     manualLastUpdateValue = data.manualLastUpdateString;
   } else if (data.manualLastUpdateMonth && data.manualLastUpdateYear) {
-    // Fallback if only month/year parts exist (less likely with current save logic)
     const monthStr = String(data.manualLastUpdateMonth).padStart(2, '0');
     manualLastUpdateValue = `${monthStr}/${data.manualLastUpdateYear}`;
   }
-
 
   return {
     id: docSnapshot.id,
@@ -73,10 +67,10 @@ const fromFirestore = (docSnapshot: any): Resource => {
     tags: tags,
     duration: data.duration || '',
     type: type,
-    updatedDate: updatedDate, // System-generated timestamp
+    updatedDate: updatedDate, 
     category: category,
     topic: topic,
-    manualLastUpdate: manualLastUpdateValue, // User-provided MM/YYYY
+    manualLastUpdate: manualLastUpdateValue,
   };
 };
 
@@ -86,11 +80,17 @@ export async function getResources(filters?: SearchFilters): Promise<Resource[]>
   if (filters?.type && filters.type !== 'All') {
     qConstraints.push(where('type', '==', filters.type));
   }
-  if (filters?.category) {
+  if (filters?.category && filters.category !== 'All') {
     qConstraints.push(where('category', '==', filters.category));
   }
-  if (filters?.topic) {
+  if (filters?.topic && filters.topic !== 'All') {
     qConstraints.push(where('topic', '==', filters.topic));
+  }
+  if (filters?.filterYear && filters.filterYear !== 'All') {
+    qConstraints.push(where('manualLastUpdateYear', '==', Number(filters.filterYear)));
+  }
+  if (filters?.filterMonth && filters.filterMonth !== 'All') {
+    qConstraints.push(where('manualLastUpdateMonth', '==', Number(filters.filterMonth)));
   }
 
   let sortByField = 'updatedDate';
@@ -118,22 +118,26 @@ export async function getResources(filters?: SearchFilters): Promise<Resource[]>
   }
   qConstraints.push(firestoreOrderBy(sortByField, sortDirection));
 
-  const resourcesCollection = collection(db, RESOURCES_COLLECTION);
-  const q = query(resourcesCollection, ...qConstraints);
-  const querySnapshot = await getDocs(q);
+  const resourcesCollectionRef = collection(db, RESOURCES_COLLECTION);
+  const q = query(resourcesCollectionRef, ...qConstraints);
   
-  let fetchedResources: Resource[] = querySnapshot.docs.map(doc => {
-    try {
-      return fromFirestore(doc);
-    } catch (error) {
-      console.error(`Error parsing document ${doc.id} in getResources:`, error);
-      // Return a placeholder or skip if critical fields are missing,
-      // or ensure fromFirestore handles this gracefully.
-      // For now, we'll let it propagate if fromFirestore throws, or filter out if it returns undefined.
-      return null;
-    }
-  }).filter(resource => resource !== null) as Resource[];
-
+  let fetchedResources: Resource[] = [];
+  try {
+    const querySnapshot = await getDocs(q);
+    fetchedResources = querySnapshot.docs.map(doc => {
+      try {
+        return fromFirestore(doc);
+      } catch (error) {
+        console.error(`Error parsing document ${doc.id} in getResources:`, error);
+        return null;
+      }
+    }).filter(resource => resource !== null) as Resource[];
+  } catch (error) {
+     console.error("Error fetching resources from Firestore:", error);
+     // Potentially re-throw or handle as a user-facing error
+     // For now, return empty array and log. Check server console for Firestore index errors.
+     return [];
+  }
 
   if (filters?.query) {
     const lowerQuery = filters.query.toLowerCase();
@@ -165,21 +169,17 @@ export async function getResourceById(id: string): Promise<Resource | undefined>
   }
 }
 
-// The resourceData here is expected to be prepared by the action, including manualLastUpdateString/Month/Year
-export async function addResource(resourceData: Omit<Resource, 'id' | 'updatedDate' | 'manualLastUpdate'> & { manualLastUpdateString?: string; manualLastUpdateMonth?: number; manualLastUpdateYear?: number }): Promise<Resource> {
+export async function addResource(resourceData: Omit<Resource, 'id' | 'updatedDate' | 'manualLastUpdate'> & { manualLastUpdateString?: string | null; manualLastUpdateMonth?: number | null; manualLastUpdateYear?: number | null }): Promise<Resource> {
   const newResourceData = {
     ...resourceData,
-    updatedDate: serverTimestamp(), // Use serverTimestamp for system update
+    updatedDate: serverTimestamp(),
   };
   const docRef = await addDoc(collection(db, RESOURCES_COLLECTION), newResourceData);
   
   const newDocSnap = await getDoc(docRef);
-  // Wait for server timestamp to be applied, or read it back (might be null initially if read immediately)
-  // For simplicity, we re-fetch. For optimization, could construct locally if serverTimestamp behavior is well-understood.
   return fromFirestore(newDocSnap); 
 }
 
-// resourceUpdateData is also expected to be prepared by the action
 export async function updateResource(id: string, resourceUpdateData: Partial<Omit<Resource, 'id' | 'updatedDate' | 'manualLastUpdate'> & { manualLastUpdateString?: string | null; manualLastUpdateMonth?: number | null; manualLastUpdateYear?: number | null }>): Promise<Resource | null> {
   const docRef = doc(db, RESOURCES_COLLECTION, id);
   const updateDataWithTimestamp = {
