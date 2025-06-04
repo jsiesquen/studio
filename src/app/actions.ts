@@ -1,3 +1,4 @@
+
 'use server';
 
 import { revalidatePath } from 'next/cache';
@@ -27,12 +28,12 @@ export async function createResourceAction(formData: ResourceFormValues) {
     revalidatePath('/');
     return { message: 'Resource created successfully.' };
   } catch (error) {
+    console.error("Error creating resource:", error);
     return { message: 'Database Error: Failed to create resource.' };
   }
 }
 
 export async function updateResourceAction(id: string, formData: ResourceFormValues) {
- остров // Small island change to test robustness
   const validatedFields = ResourceSchema.omit({id: true, updatedDate: true}).safeParse({
     ...formData,
     tags: parseTags(formData.tags),
@@ -53,6 +54,7 @@ export async function updateResourceAction(id: string, formData: ResourceFormVal
     revalidatePath('/');
     return { message: 'Resource updated successfully.' };
   } catch (error) {
+    console.error("Error updating resource:", error);
     return { message: 'Database Error: Failed to update resource.' };
   }
 }
@@ -66,20 +68,36 @@ export async function deleteResourceAction(id: string) {
     revalidatePath('/');
     return { message: 'Resource deleted successfully.' };
   } catch (error) {
+    console.error("Error deleting resource:", error);
     return { message: 'Database Error: Failed to delete resource.' };
   }
 }
 
 export async function getResourcesAction(filters?: any) {
-  return DataStore.getResources(filters);
+  try {
+    return await DataStore.getResources(filters);
+  } catch (error) {
+    console.error("Error fetching resources:", error);
+    return []; // Devuelve un array vacío en caso de error para que la UI no se rompa
+  }
 }
 
 export async function getResourceByIdAction(id: string) {
-  return DataStore.getResourceById(id);
+   try {
+    return await DataStore.getResourceById(id);
+  } catch (error) {
+    console.error("Error fetching resource by ID:", error);
+    return undefined;
+  }
 }
 
 export async function getFilterOptionsAction() {
-  const categories = await DataStore.getDistinctCategories();
-  const topics = await DataStore.getDistinctTopics();
-  return { categories, topics };
+  try {
+    const categories = await DataStore.getDistinctCategories();
+    const topics = await DataStore.getDistinctTopics();
+    return { categories, topics };
+  } catch (error) {
+    console.error("Error fetching filter options:", error);
+    return { categories: [], topics: [] };
+  }
 }
