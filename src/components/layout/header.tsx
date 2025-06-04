@@ -1,5 +1,7 @@
+
 import { BookHeart } from 'lucide-react';
 import Link from 'next/link';
+import { ThemeToggleButton } from './theme-toggle-button';
 
 export function Header() {
   return (
@@ -9,7 +11,7 @@ export function Header() {
           <BookHeart className="h-7 w-7 text-primary" />
           <span className="font-headline text-xl font-semibold">Resource Hub</span>
         </Link>
-        {/* Add any additional header items here, e.g., UserProfile button */}
+        <ThemeToggleButton />
       </div>
     </header>
   );
