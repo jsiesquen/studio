@@ -3,18 +3,49 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { ResourceFormSchema, type Resource, type ResourceFormValues } from '@/lib/definitions';
+import type { Resource, ResourceFormValues, ResourceType } from '@/lib/definitions';
+import { ResourceFormSchema } from '@/lib/definitions';
 import * as DataStore from '@/lib/data-store';
 
 const parseTags = (tagsString: string): string[] => {
+  if (!tagsString || typeof tagsString !== 'string') {
+    return [];
+  }
   return tagsString.split(',').map(tag => tag.trim()).filter(tag => tag.length > 0);
 };
 
+// Interfaz para los datos que se envían a Firestore (para creación o actualización)
+// No incluye 'id' ni 'updatedDate' ya que se manejan por separado o con serverTimestamp.
+// El 'manualLastUpdate' original del formulario se transforma.
+interface StorableResourceData {
+  name: string;
+  relativeUrl: string | null;
+  fullUrl: string;
+  tags: string[];
+  duration: string | null;
+  type: ResourceType;
+  category: string;
+  topic: string;
+  manualLastUpdateString: string | null;
+  manualLastUpdateMonth: number | null;
+  manualLastUpdateYear: number | null;
+}
+
 // Helper to prepare data for Firestore, including manual update date processing
-const prepareDataForStore = (formData: ResourceFormValues) => {
-  const dataToStore: any = {
-    ...formData,
+const prepareDataForStore = (formData: ResourceFormValues): StorableResourceData => {
+  const dataToStore: StorableResourceData = {
+    name: formData.name,
+    relativeUrl: formData.relativeUrl || null,
+    fullUrl: formData.fullUrl,
     tags: parseTags(formData.tags),
+    duration: formData.duration || null,
+    type: formData.type,
+    category: formData.category,
+    topic: formData.topic,
+    // Inicializar campos de manualLastUpdate
+    manualLastUpdateString: null,
+    manualLastUpdateMonth: null,
+    manualLastUpdateYear: null,
   };
 
   if (formData.manualLastUpdate && /^(0[1-9]|1[0-2])\/\d{4}$/.test(formData.manualLastUpdate)) {
@@ -22,17 +53,8 @@ const prepareDataForStore = (formData: ResourceFormValues) => {
     dataToStore.manualLastUpdateString = formData.manualLastUpdate;
     dataToStore.manualLastUpdateMonth = parseInt(month, 10);
     dataToStore.manualLastUpdateYear = parseInt(year, 10);
-  } else {
-    // Ensure these fields are explicitly undefined or null if not provided / invalid,
-    // so Firestore can remove them if they existed or not set them.
-    dataToStore.manualLastUpdateString = null;
-    dataToStore.manualLastUpdateMonth = null;
-    dataToStore.manualLastUpdateYear = null;
   }
-  // Remove the combined manualLastUpdate field as we store its parts
-  delete dataToStore.manualLastUpdate;
-
-
+  
   return dataToStore;
 };
 
