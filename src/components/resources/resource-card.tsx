@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { CalendarDays, Clock, Edit3, ExternalLink, FileText, PlaySquare, Tag, Trash2, Wrench, BookOpen, TerminalSquare } from 'lucide-react';
+import { CalendarDays, Clock, Edit3, ExternalLink, FileText, PlaySquare, Tag, Trash2, Wrench, BookOpen, TerminalSquare, CalendarClock } from 'lucide-react';
 import type { Resource, ResourceType } from '@/lib/definitions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -66,8 +66,13 @@ export function ResourceCard({ resource, onEdit, onDelete }: ResourceCardProps) 
               <Clock className="mr-2 h-4 w-4" /> Duration: {resource.duration}
             </p>
           )}
+          {resource.manualLastUpdate && (
+             <p className="flex items-center text-muted-foreground">
+              <CalendarClock className="mr-2 h-4 w-4" /> Last Content Update: {resource.manualLastUpdate}
+            </p>
+          )}
           <p className="flex items-center text-muted-foreground">
-            <CalendarDays className="mr-2 h-4 w-4" /> Updated: {format(new Date(resource.updatedDate), 'PPP')}
+            <CalendarDays className="mr-2 h-4 w-4" /> Record Updated: {format(new Date(resource.updatedDate), 'PPP')}
           </p>
         </div>
       </CardContent>

@@ -15,7 +15,7 @@ import {
   FormMessage,
 } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea'; // Assuming Textarea exists for tags or longer descriptions if needed
+import { Textarea } from '@/components/ui/textarea';
 import {
   Select,
   SelectContent,
@@ -44,19 +44,19 @@ export function ResourceForm({ onSubmit, initialData, isSubmitting }: ResourceFo
       type: initialData?.type || RESOURCE_TYPES[0],
       category: initialData?.category || '',
       topic: initialData?.topic || '',
+      manualLastUpdate: initialData?.manualLastUpdate || '',
     },
   });
 
   async function handleSubmit(values: ResourceFormValues) {
     await onSubmit(values);
-    // Optionally reset form if it's a create form and not closing
-    // if (!initialData) form.reset();
+    // if (!initialData) form.reset(); // Keep form populated for potential edits after failed submit
   }
 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-6">
-        <ScrollArea className="h-[60vh] pr-4"> {/* Adjust height as needed */}
+        <ScrollArea className="h-[60vh] pr-4"> 
         <div className="space-y-6">
         <FormField
           control={form.control}
@@ -184,6 +184,20 @@ export function ResourceForm({ onSubmit, initialData, isSubmitting }: ResourceFo
             )}
           />
         </div>
+        <FormField
+            control={form.control}
+            name="manualLastUpdate"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Manual Last Update (MM/YYYY, Optional)</FormLabel>
+                <FormControl>
+                  <Input placeholder="MM/YYYY" {...field} value={field.value || ''} />
+                </FormControl>
+                <FormDescription>The month and year the resource content was last updated.</FormDescription>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
         </div>
         </ScrollArea>
         <div className="flex justify-end pt-4">
