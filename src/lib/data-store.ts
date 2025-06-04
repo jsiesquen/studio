@@ -15,23 +15,55 @@ import {
   QueryConstraint,
 } from 'firebase/firestore';
 import type { Resource, SearchFilters, ResourceType } from './definitions';
+import { RESOURCE_TYPES, ResourceTypeEnum } from './definitions';
 
 const RESOURCES_COLLECTION = 'resources';
 
 // Helper para convertir datos de Firestore a tipo Resource
 const fromFirestore = (docSnapshot: any): Resource => {
-  const data = docSnapshot.data();
+  const data = docSnapshot.data() || {}; // Asegurar que data sea un objeto
+
+  const name = data.name || 'Unnamed Resource';
+  const fullUrl = data.fullUrl || 'https://example.com/invalid-url'; // Proporcionar una URL válida por defecto
+  const tags = Array.isArray(data.tags) ? data.tags : [];
+  
+  let type: ResourceType = RESOURCE_TYPES[0]; // Default type
+  const parsedType = ResourceTypeEnum.safeParse(data.type);
+  if (parsedType.success) {
+    type = parsedType.data;
+  } else if (data.type !== undefined) { // Solo advertir si data.type existía pero era inválido
+    console.warn(`Document ${docSnapshot.id} has invalid type '${data.type}'. Defaulting to '${type}'.`);
+  }
+
+  let updatedDate: Date;
+  if (data.updatedDate instanceof Timestamp) {
+    updatedDate = data.updatedDate.toDate();
+  } else {
+    if (data.updatedDate !== undefined) { // Solo advertir si existía pero era inválido
+      console.warn(`Document ${docSnapshot.id} has invalid or missing updatedDate. Defaulting to epoch.`);
+    }
+    updatedDate = new Date(0); // Epoch como default
+  }
+  
+  const category = data.category || 'Uncategorized';
+  const topic = data.topic || 'General';
+  
+  if (!data.name) console.warn(`Document ${docSnapshot.id} missing name. Defaulting to '${name}'.`);
+  if (!data.fullUrl) console.warn(`Document ${docSnapshot.id} missing fullUrl. Defaulting to '${fullUrl}'.`);
+  if (!data.category && data.category !== undefined) console.warn(`Document ${docSnapshot.id} missing category. Defaulting to '${category}'.`);
+  if (!data.topic && data.topic !== undefined) console.warn(`Document ${docSnapshot.id} missing topic. Defaulting to '${topic}'.`);
+
   return {
     id: docSnapshot.id,
-    name: data.name,
+    name: name,
     relativeUrl: data.relativeUrl || '',
-    fullUrl: data.fullUrl,
-    tags: data.tags || [],
+    fullUrl: fullUrl,
+    tags: tags,
     duration: data.duration || '',
-    type: data.type,
-    updatedDate: (data.updatedDate as Timestamp).toDate(), // Convertir Timestamp a Date
-    category: data.category,
-    topic: data.topic,
+    type: type,
+    updatedDate: updatedDate,
+    category: category,
+    topic: topic,
   };
 };
 
@@ -81,23 +113,18 @@ export async function getResources(filters?: SearchFilters): Promise<Resource[]>
   
   let fetchedResources: Resource[] = querySnapshot.docs.map(fromFirestore);
 
-  // Aplicar filtros en memoria para query de texto y tags (más complejo para Firestore directamente)
+  // Aplicar filtros en memoria para query de texto
   if (filters?.query) {
     const lowerQuery = filters.query.toLowerCase();
     fetchedResources = fetchedResources.filter(
       (r) =>
-        r.name.toLowerCase().includes(lowerQuery) ||
-        r.tags.some((tag) => tag.toLowerCase().includes(lowerQuery)) ||
-        r.category.toLowerCase().includes(lowerQuery) || // Si no se filtró por Firestore
-        r.topic.toLowerCase().includes(lowerQuery) // Si no se filtró por Firestore
+        (r.name && r.name.toLowerCase().includes(lowerQuery)) ||
+        (r.tags && r.tags.some((tag) => typeof tag === 'string' && tag.toLowerCase().includes(lowerQuery))) ||
+        (r.category && r.category.toLowerCase().includes(lowerQuery)) ||
+        (r.topic && r.topic.toLowerCase().includes(lowerQuery))
     );
   }
   
-  // Nota: Si los filtros de category/topic fueron aplicados por Firestore,
-  // la re-filtración aquí es redundante pero inofensiva.
-  // Para tags con 'array-contains-any', o búsquedas de texto más complejas,
-  // se necesitarían servicios externos como Algolia o funciones de Cloud.
-
   return fetchedResources;
 }
 
@@ -106,7 +133,12 @@ export async function getResourceById(id: string): Promise<Resource | undefined>
   const docSnap = await getDoc(docRef);
 
   if (docSnap.exists()) {
-    return fromFirestore(docSnap);
+    try {
+      return fromFirestore(docSnap);
+    } catch (error) {
+      console.error(`Error parsing document ${id} from Firestore:`, error);
+      return undefined;
+    }
   } else {
     return undefined;
   }
@@ -118,37 +150,32 @@ export async function addResource(resourceData: Omit<Resource, 'id' | 'updatedDa
     updatedDate: Timestamp.fromDate(new Date()), // Usar Timestamp de Firestore
   };
   const docRef = await addDoc(collection(db, RESOURCES_COLLECTION), newResourceData);
-  // Devolver el recurso completo con el ID generado y la fecha convertida
-  return {
-    ...resourceData,
-    id: docRef.id,
-    updatedDate: (newResourceData.updatedDate as Timestamp).toDate(),
-  };
+  
+  // Para asegurar consistencia, obtenemos el documento recién creado y lo parseamos
+  const newDocSnap = await getDoc(docRef);
+  return fromFirestore(newDocSnap); // Usar fromFirestore para consistencia
 }
 
 export async function updateResource(id: string, resourceUpdateData: Partial<Omit<Resource, 'id' | 'updatedDate'>>): Promise<Resource | null> {
   const docRef = doc(db, RESOURCES_COLLECTION, id);
-  const updateData = {
+  const updateDataWithTimestamp = {
     ...resourceUpdateData,
-    updatedDate: Timestamp.fromDate(new Date()), // Actualizar con Timestamp de Firestore
+    updatedDate: Timestamp.fromDate(new Date()),
   };
   
-  // Verificar si el documento existe antes de intentar actualizarlo
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) {
-    return null; // O lanzar un error
+    return null; 
   }
 
-  await updateDoc(docRef, updateData);
+  await updateDoc(docRef, updateDataWithTimestamp);
   
-  // Obtener el documento actualizado para devolverlo
   const updatedDocSnap = await getDoc(docRef);
-  return fromFirestore(updatedDocSnap);
+  return fromFirestore(updatedDocSnap); // Usar fromFirestore para consistencia
 }
 
 export async function deleteResource(id: string): Promise<boolean> {
   const docRef = doc(db, RESOURCES_COLLECTION, id);
-  // Verificar si el documento existe antes de intentar eliminarlo
   const docSnap = await getDoc(docRef);
   if (!docSnap.exists()) {
     return false; 
@@ -159,14 +186,26 @@ export async function deleteResource(id: string): Promise<boolean> {
 
 export async function getDistinctCategories(): Promise<string[]> {
   const resourcesCollection = collection(db, RESOURCES_COLLECTION);
-  const querySnapshot = await getDocs(query(resourcesCollection)); // Obtener todos los documentos
-  const categories = new Set(querySnapshot.docs.map(doc => doc.data().category as string));
+  const querySnapshot = await getDocs(query(resourcesCollection)); 
+  const categories = new Set<string>();
+  querySnapshot.docs.forEach(doc => {
+    const category = doc.data().category;
+    if (typeof category === 'string' && category.trim() !== '') {
+      categories.add(category);
+    }
+  });
   return Array.from(categories).sort();
 }
 
 export async function getDistinctTopics(): Promise<string[]> {
   const resourcesCollection = collection(db, RESOURCES_COLLECTION);
-  const querySnapshot = await getDocs(query(resourcesCollection)); // Obtener todos los documentos
-  const topics = new Set(querySnapshot.docs.map(doc => doc.data().topic as string));
+  const querySnapshot = await getDocs(query(resourcesCollection)); 
+  const topics = new Set<string>();
+  querySnapshot.docs.forEach(doc => {
+    const topic = doc.data().topic;
+    if (typeof topic === 'string' && topic.trim() !== '') {
+      topics.add(topic);
+    }
+  });
   return Array.from(topics).sort();
 }
