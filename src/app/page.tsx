@@ -11,10 +11,10 @@ import { Header } from '@/components/layout/header';
 import { ResourceCard } from '@/components/resources/resource-card';
 import { ResourceDialog } from '@/components/resources/resource-dialog';
 import { FilterControls } from '@/components/resources/filter-controls';
-import { 
-  createResourceAction, 
-  deleteResourceAction, 
-  getResourcesAction, 
+import {
+  createResourceAction,
+  deleteResourceAction,
+  getResourcesAction,
   updateResourceAction,
   getFilterOptionsAction
 } from './actions';
@@ -32,7 +32,7 @@ export default function HomePage() {
     type: 'All',
     sortBy: 'date_desc',
   });
-  
+
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
 
@@ -76,12 +76,16 @@ export default function HomePage() {
   const handleFormSubmit = async (values: ResourceFormValues) => {
     startSubmitTransition(async () => {
       const action = editingResource ? updateResourceAction : createResourceAction;
-      const result = editingResource 
-        ? await action(editingResource.id!, values) 
+      const result = editingResource
+        ? await action(editingResource.id!, values)
         : await action(values);
 
       if (result.message.includes('successfully')) {
-        toast({ title: editingResource ? 'Resource Updated' : 'Resource Created', description: result.message });
+        // Mover la llamada al toast aquí para que se ejecute primero
+        toast({
+          title: editingResource ? 'Resource Updated' : 'Resource Created',
+          description: result.message
+        });
         setIsDialogOpen(false);
         setEditingResource(null);
         fetchResources(filters); // Re-fetch resources
@@ -90,7 +94,7 @@ export default function HomePage() {
         let errorDetails = '';
         if (result.errors) {
           errorDetails = Object.entries(result.errors)
-            .map(([field, messages]) => `${field}: ${(messages as string[]).join(', ')}`)
+            .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? (messages as string[]).join(', ') : String(messages)}`)
             .join('; ');
         }
         toast({
@@ -126,8 +130,8 @@ export default function HomePage() {
           </Button>
         </div>
 
-        <FilterControls 
-          filters={filters} 
+        <FilterControls
+          filters={filters}
           onFiltersChange={handleFiltersChange}
           availableCategories={availableCategories}
           availableTopics={availableTopics}
