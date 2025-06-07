@@ -75,31 +75,52 @@ export default function HomePage() {
 
   const handleFormSubmit = async (values: ResourceFormValues) => {
     startSubmitTransition(async () => {
-      const action = editingResource ? updateResourceAction : createResourceAction;
-      const result = editingResource
-        ? await action(editingResource.id!, values)
-        : await action(values);
+      try {
+        const actionToTake = editingResource ? updateResourceAction : createResourceAction;
+        let result;
 
-      if (result.message.includes('successfully')) {
-        // Mover la llamada al toast aquí para que se ejecute primero
-        toast({
-          title: editingResource ? 'Resource Updated' : 'Resource Created',
-          description: result.message
-        });
-        setIsDialogOpen(false);
-        setEditingResource(null);
-        fetchResources(filters); // Re-fetch resources
-        fetchFilterOptions(); // Re-fetch filter options in case new category/topic added
-      } else {
-        let errorDetails = '';
-        if (result.errors) {
-          errorDetails = Object.entries(result.errors)
-            .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? (messages as string[]).join(', ') : String(messages)}`)
-            .join('; ');
+        if (editingResource && editingResource.id) {
+          result = await actionToTake(editingResource.id, values);
+        } else if (!editingResource) {
+          result = await actionToTake(values); // For createResourceAction
+        } else {
+          // This case should ideally not happen if a resource is being edited.
+          console.error("Attempting to update resource without an ID.", editingResource);
+          toast({
+            title: "Error Updating Resource",
+            description: "Cannot update resource: Critical information missing (ID).",
+            variant: 'destructive',
+          });
+          return; // Exit early
         }
+
+        if (result.message.includes('successfully')) {
+          toast({
+            title: editingResource ? 'Resource Updated' : 'Resource Created',
+            description: result.message
+          });
+          setIsDialogOpen(false);
+          setEditingResource(null);
+          fetchResources(filters);
+          fetchFilterOptions();
+        } else {
+          let errorDetails = '';
+          if (result.errors) {
+            errorDetails = Object.entries(result.errors)
+              .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? (messages as string[]).join(', ') : String(messages)}`)
+              .join('; ');
+          }
+          toast({
+            title: `Error ${editingResource ? 'updating' : 'creating'} resource`,
+            description: result.message + (errorDetails ? ` Details: ${errorDetails}` : ''),
+            variant: 'destructive',
+          });
+        }
+      } catch (error) {
+        console.error("Unexpected error during form submission:", error);
         toast({
-          title: `Error ${editingResource ? 'updating' : 'creating'} resource`,
-          description: result.message + (errorDetails ? ` Details: ${errorDetails}` : ''),
+          title: "An Unexpected Error Occurred",
+          description: "Please try again. If the problem persists, contact support.",
           variant: 'destructive',
         });
       }
@@ -111,8 +132,8 @@ export default function HomePage() {
       const result = await deleteResourceAction(id);
       if (result.message.includes('successfully')) {
         toast({ title: 'Resource Deleted', description: result.message });
-        fetchResources(filters); // Re-fetch resources
-        fetchFilterOptions(); // Re-fetch filter options
+        fetchResources(filters);
+        fetchFilterOptions();
       } else {
         toast({ title: 'Error deleting resource', description: result.message, variant: 'destructive' });
       }
