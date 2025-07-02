@@ -39,8 +39,8 @@ Resource Name: {{{name}}}
 Resource URL: {{{url}}}
 
 Based on this information, please provide your best estimate for the following fields:
-1.  **duration**: The likely duration or time required to consume this resource (e.g., "5 min read", "1 hour video", "3 weeks").
-2.  **manualLastUpdate**: The date the content was last updated, in strict MM/YYYY format. Analyze the URL, title, and any visible cues to make an educated guess.
+1.  **duration**: Gets the duration or time required to consume this resource (e.g., "3.5 hours of video on demand," "3.5 hours of video on demand," "30 minutes," etc.). The value appears after the "This course includes:" or "Este curso incluye:" label. If found some value, return me "Xh" in case hours and "Xm" in case minutes.
+2.  **manualLastUpdate**: The date the content was last updated, in strict MM/YYYY format. Within visible content, get the value (with MM/YYYY format) after of "Last updated" o "Última actualización" label.
 
 If you cannot confidently determine a value for any field, leave it blank. Do not invent information. Your response must be in the requested JSON format.`,
 });
