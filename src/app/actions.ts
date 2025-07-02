@@ -6,6 +6,7 @@ import { z } from 'zod';
 import type { Resource, ResourceFormValues, ResourceType } from '@/lib/definitions';
 import { ResourceFormSchema } from '@/lib/definitions';
 import * as DataStore from '@/lib/data-store';
+import { scrapeResource, type ScrapeResourceOutput } from '@/ai/flows/scrape-resource-flow';
 
 const parseTags = (tagsString: string): string[] => {
   if (!tagsString || typeof tagsString !== 'string') {
@@ -145,5 +146,23 @@ export async function getFilterOptionsAction() {
   } catch (error) {
     console.error("Error fetching filter options:", error);
     return { categories: [], topics: [] };
+  }
+}
+
+export async function scrapeResourceAction(url: string, name: string): Promise<{ success: boolean; data?: ScrapeResourceOutput; message?: string; }> {
+  if (!url || !name) {
+    return { success: false, message: 'URL and name are required for scraping.' };
+  }
+  
+  try {
+    const scrapedData = await scrapeResource({ url, name });
+    // Check if the model returned any data at all
+    if (!scrapedData.duration && !scrapedData.manualLastUpdate) {
+        return { success: false, message: 'Could not extract any new information from the resource.' };
+    }
+    return { success: true, data: scrapedData };
+  } catch (error) {
+    console.error("Error scraping resource:", error);
+    return { success: false, message: 'An unexpected error occurred during the scraping process.' };
   }
 }

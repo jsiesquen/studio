@@ -10,13 +10,15 @@ import { useToast } from '@/hooks/use-toast';
 import { Header } from '@/components/layout/header';
 import { ResourceCard } from '@/components/resources/resource-card';
 import { ResourceDialog } from '@/components/resources/resource-dialog';
+import { ScrapeResultDialog } from '@/components/resources/scrape-result-dialog';
 import { FilterControls } from '@/components/resources/filter-controls';
 import {
   createResourceAction,
   deleteResourceAction,
   getResourcesAction,
   updateResourceAction,
-  getFilterOptionsAction
+  getFilterOptionsAction,
+  scrapeResourceAction,
 } from './actions';
 
 export default function HomePage() {
@@ -35,6 +37,11 @@ export default function HomePage() {
 
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
   const [availableTopics, setAvailableTopics] = useState<string[]>([]);
+
+  // State for scraping
+  const [scrapingResourceId, setScrapingResourceId] = useState<string | null>(null);
+  const [scrapedData, setScrapedData] = useState<{ duration?: string; manualLastUpdate?: string } | null>(null);
+  const [isScrapeModalOpen, setIsScrapeModalOpen] = useState(false);
 
   const fetchResources = async (currentFilters: SearchFilters) => {
     setIsLoading(true);
@@ -76,48 +83,45 @@ export default function HomePage() {
   const handleFormSubmit = async (values: ResourceFormValues) => {
     startSubmitTransition(async () => {
       try {
-        const actionToTake = editingResource ? updateResourceAction : createResourceAction;
+        const isUpdating = !!(editingResource && editingResource.id);
+        const actionToTake = isUpdating ? updateResourceAction : createResourceAction;
         let result;
-
-        if (editingResource && editingResource.id) {
-          result = await actionToTake(editingResource.id, values);
-        } else if (!editingResource) {
-          result = await actionToTake(values); // For createResourceAction
+  
+        if (isUpdating && values.id) {
+          result = await updateResourceAction(values.id, values);
+        } else if (!isUpdating) {
+          result = await createResourceAction(values);
         } else {
-          // This case should ideally not happen if a resource is being edited.
-          console.error("Attempting to update resource without an ID.", editingResource);
           toast({
             title: "Error Updating Resource",
             description: "Cannot update resource: Critical information missing (ID).",
             variant: 'destructive',
           });
-          return; // Exit early
+          return;
         }
-
+  
+        toast({
+          title: result.message.includes('successfully') ? (isUpdating ? 'Resource Updated' : 'Resource Created') : 'Action Failed',
+          description: result.message,
+          variant: result.message.includes('successfully') ? 'default' : 'destructive',
+        });
+  
         if (result.message.includes('successfully')) {
-          toast({
-            title: editingResource ? 'Resource Updated' : 'Resource Created',
-            description: result.message
-          });
           setIsDialogOpen(false);
           setEditingResource(null);
           fetchResources(filters);
           fetchFilterOptions();
-        } else {
-          let errorDetails = '';
-          if (result.errors) {
-            errorDetails = Object.entries(result.errors)
+        } else if (result.errors) {
+            const errorDetails = Object.entries(result.errors)
               .map(([field, messages]) => `${field}: ${Array.isArray(messages) ? (messages as string[]).join(', ') : String(messages)}`)
               .join('; ');
-          }
-          toast({
-            title: `Error ${editingResource ? 'updating' : 'creating'} resource`,
-            description: result.message + (errorDetails ? ` Details: ${errorDetails}` : ''),
-            variant: 'destructive',
-          });
+            toast({
+              title: `Error ${isUpdating ? 'updating' : 'creating'} resource`,
+              description: result.message + (errorDetails ? ` Details: ${errorDetails}` : ''),
+              variant: 'destructive',
+            });
         }
       } catch (error) {
-        console.error("Unexpected error during form submission:", error);
         toast({
           title: "An Unexpected Error Occurred",
           description: "Please try again. If the problem persists, contact support.",
@@ -126,7 +130,7 @@ export default function HomePage() {
       }
     });
   };
-
+  
   const handleDeleteResource = (id: string) => {
     startSubmitTransition(async () => {
       const result = await deleteResourceAction(id);
@@ -139,6 +143,49 @@ export default function HomePage() {
       }
     });
   };
+
+  const handleScrape = async (resource: Resource) => {
+    if (!resource.id) return;
+    setScrapingResourceId(resource.id);
+    setEditingResource(resource); 
+    try {
+      const result = await scrapeResourceAction(resource.fullUrl, resource.name);
+      if (result.success && result.data) {
+        setScrapedData(result.data);
+        setIsScrapeModalOpen(true);
+      } else {
+        toast({ title: 'Analysis Failed', description: result.message || 'Could not find new information.', variant: 'destructive' });
+      }
+    } catch (error) {
+      toast({ title: 'Error', description: 'An unexpected error occurred during analysis.', variant: 'destructive' });
+    } finally {
+      setScrapingResourceId(null);
+    }
+  };
+
+  const handleScrapeConfirm = () => {
+    if (!editingResource || !scrapedData) {
+      toast({ title: "Error", description: "No resource or scraped data to update.", variant: "destructive" });
+      return;
+    }
+
+    const formValues: ResourceFormValues = {
+        id: editingResource.id,
+        name: editingResource.name,
+        relativeUrl: editingResource.relativeUrl,
+        fullUrl: editingResource.fullUrl,
+        tags: editingResource.tags.join(', '),
+        type: editingResource.type,
+        category: editingResource.category,
+        topic: editingResource.topic,
+        duration: scrapedData.duration ?? editingResource.duration,
+        manualLastUpdate: scrapedData.manualLastUpdate ?? editingResource.manualLastUpdate,
+    };
+    
+    handleFormSubmit(formValues);
+    setIsScrapeModalOpen(false);
+  };
+
 
   return (
     <div className="flex flex-col min-h-screen bg-background">
@@ -179,6 +226,8 @@ export default function HomePage() {
                 resource={resource}
                 onEdit={() => handleOpenDialog(resource)}
                 onDelete={handleDeleteResource}
+                onScrape={handleScrape}
+                isScraping={scrapingResourceId === resource.id}
               />
             ))}
           </div>
@@ -192,6 +241,15 @@ export default function HomePage() {
         initialData={editingResource}
         isSubmitting={isSubmitting}
       />
+
+      <ScrapeResultDialog
+        open={isScrapeModalOpen}
+        onOpenChange={setIsScrapeModalOpen}
+        onConfirm={handleScrapeConfirm}
+        scrapedData={scrapedData}
+        isSubmitting={isSubmitting}
+      />
+
       <footer className="py-6 text-center text-sm text-muted-foreground border-t">
         © {new Date().getFullYear()} Resource Hub. All rights reserved.
       </footer>

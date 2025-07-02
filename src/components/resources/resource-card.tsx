@@ -1,7 +1,7 @@
 import Image from 'next/image';
 import Link from 'next/link';
 import { format } from 'date-fns';
-import { CalendarDays, Clock, Edit3, ExternalLink, FileText, PlaySquare, Tag, Trash2, Wrench, BookOpen, TerminalSquare, CalendarClock } from 'lucide-react';
+import { CalendarDays, Clock, Edit3, ExternalLink, FileText, PlaySquare, Tag, Trash2, Wrench, BookOpen, TerminalSquare, CalendarClock, Sparkles, Loader2 } from 'lucide-react';
 import type { Resource, ResourceType } from '@/lib/definitions';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -17,11 +17,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface ResourceCardProps {
   resource: Resource;
   onEdit: (resource: Resource) => void;
   onDelete: (id: string) => void;
+  onScrape: (resource: Resource) => void;
+  isScraping: boolean;
 }
 
 const typeIcons: Record<ResourceType, React.ElementType> = {
@@ -32,7 +35,7 @@ const typeIcons: Record<ResourceType, React.ElementType> = {
   Documentation: TerminalSquare,
 };
 
-export function ResourceCard({ resource, onEdit, onDelete }: ResourceCardProps) {
+export function ResourceCard({ resource, onEdit, onDelete, onScrape, isScraping }: ResourceCardProps) {
   const TypeIcon = typeIcons[resource.type] || FileText;
 
   return (
@@ -83,13 +86,35 @@ export function ResourceCard({ resource, onEdit, onDelete }: ResourceCardProps) 
             View Resource
           </Button>
         </Link>
-        <div className="flex gap-2">
-          <Button variant="ghost" size="icon" onClick={() => onEdit(resource)} aria-label="Edit resource">
-            <Edit3 className="h-5 w-5" />
-          </Button>
+        <div className="flex gap-1">
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => onScrape(resource)} disabled={isScraping} aria-label="Scrape resource with AI">
+                  {isScraping ? <Loader2 className="h-5 w-5 animate-spin" /> : <Sparkles className="h-5 w-5 text-accent-foreground" />}
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Analyze with AI</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button variant="ghost" size="icon" onClick={() => onEdit(resource)} aria-label="Edit resource">
+                  <Edit3 className="h-5 w-5" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>Edit Resource</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="icon" aria-label="Delete resource">
+               <Button variant="ghost" size="icon" aria-label="Delete resource">
                 <Trash2 className="h-5 w-5 text-destructive" />
               </Button>
             </AlertDialogTrigger>
